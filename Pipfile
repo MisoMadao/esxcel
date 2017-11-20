@@ -1,0 +1,15 @@
+[[source]]
+
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+
+[dev-packages]
+
+
+
+[packages]
+
+elasticsearch = "==5.5"
+openpyxl = "*"
