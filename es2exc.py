@@ -5,11 +5,12 @@ import sys
 from elasticsearch import Elasticsearch
 import argparse
 from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 
 def new_key(upper, new):
     if upper != '':
-        return upper + '.' + new
+        return upper + '.' + str(new)
     else:
         return new
 
@@ -24,7 +25,7 @@ def loop_on_nested_dict(the_element, upper_key=''):
             for _ in loop_on_nested_dict(the_element[i], '{}[{}]'.format(upper_key, i)):
                 yield _
     else:
-        yield upper_key, the_element
+        yield upper_key, str(the_element)
 
 
 if __name__ == '__main__':
@@ -70,14 +71,18 @@ if __name__ == '__main__':
     for hit in es_response['hits']['hits']:
         for k, v in loop_on_nested_dict(hit['_source']):
             if k not in column_values:
-                column_values[k] = column_next
+                column_values[k] = (column_next, len(k))
                 column_next += 1
-                ws.cell(row=1, column=column_values[k], value=k)
-            ws.cell(row=row_next, column=column_values[k], value=str(v))
+                ws.cell(row=1, column=column_values[k][0], value=k)
+            ws.cell(row=row_next, column=column_values[k][0], value=v)
+            if column_values[k][1] < len(v) < 60:
+                column_values[k] = column_values[k][0], len(v)
         row_next += 1
+    for column_index, column_width in column_values.values():
+        ws.column_dimensions[get_column_letter(column_index)].width = column_width
 
     for agg_name in es_response['aggregations'].keys():
-        column_width = 8
+        column_width = len(agg_name)
         wb.create_sheet(agg_name)
         ws = wb.get_sheet_by_name(agg_name)
         row = 1
