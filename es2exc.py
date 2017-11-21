@@ -3,12 +3,19 @@ import json
 import logging
 import sys
 
+import os
 from elasticsearch import Elasticsearch
 from openpyxl import Workbook
 from openpyxl.chart import PieChart, Reference, BarChart
 from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Font, colors
 from openpyxl.utils import get_column_letter
+
+e_logger = logging.Logger(__name__)
+e_handler = logging.FileHandler(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'es2exc.log'))
+e_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+e_handler.setFormatter(e_formatter)
+e_logger.addHandler(e_handler)
 
 
 def new_key(upper, new):
@@ -57,12 +64,6 @@ if __name__ == '__main__':
     argument_parser.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
     argument_parser.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
     args = vars(argument_parser.parse_args())
-
-    e_logger = logging.Logger(__name__)
-    e_handler = logging.FileHandler('es2exc.log')
-    e_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    e_handler.setFormatter(e_formatter)
-    e_logger.addHandler(e_handler)
     e_logger.info(args)
 
     try:
@@ -75,6 +76,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     es_response = es_client.search(index=args['index'], body=args['query'])
+    e_logger.info('got {} hits from es!'.format(es_response['hits']['total']))
 
     wb = Workbook()
     ws = wb.get_active_sheet()
@@ -149,3 +151,4 @@ if __name__ == '__main__':
             ws.add_chart(bar_chart, "D20")
 
     wb.save(args['output'])
+    e_logger.info('saved file {}'.format(args['output']))
