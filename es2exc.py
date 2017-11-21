@@ -1,12 +1,14 @@
+import argparse
 import json
 import logging
-
 import sys
+
 from elasticsearch import Elasticsearch
-import argparse
 from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
+from openpyxl.chart import PieChart, Reference, BarChart
+from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Font, colors
+from openpyxl.utils import get_column_letter
 
 
 def new_key(upper, new):
@@ -29,6 +31,16 @@ def loop_on_nested_dict(the_element, upper_key=''):
         yield upper_key, str(the_element)
 
 
+def data_from_aggs(es_buckets):
+    data = []
+    width = 8
+    for bucket in es_buckets:
+        data.append([bucket['key'], bucket['doc_count']])
+        if 60 > len(bucket['key']) > width:
+            width = len(bucket['key'])
+    return data, width
+
+
 if __name__ == '__main__':
 
     argument_parser = argparse.ArgumentParser(
@@ -42,6 +54,8 @@ if __name__ == '__main__':
     argument_parser.add_argument('--index', help='index (pattern) to make the query', required=True)
     argument_parser.add_argument('--query', help='es query to make, every aggregation will be a table', required=True)
     argument_parser.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
+    argument_parser.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
+    argument_parser.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
     args = vars(argument_parser.parse_args())
 
     e_logger = logging.Logger(__name__)
@@ -71,6 +85,7 @@ if __name__ == '__main__':
 
     header_font = Font(color=colors.BLUE, bold=True)
 
+    # add total hits sheet
     for hit in es_response['hits']['hits']:
         for k, v in loop_on_nested_dict(hit['_source']):
             if k not in column_values:
@@ -85,8 +100,9 @@ if __name__ == '__main__':
     for column_index, column_width in column_values.values():
         ws.column_dimensions[get_column_letter(column_index)].width = column_width
 
+    # add a sheet for every aggregation
     for agg_name in es_response['aggregations'].keys():
-        column_width = len(agg_name)
+        column_width_header = len(agg_name)
         wb.create_sheet(agg_name)
         ws = wb.get_sheet_by_name(agg_name)
         row = 1
@@ -94,12 +110,42 @@ if __name__ == '__main__':
         c.font = header_font
         c = ws.cell(row=row, column=2, value='count')
         c.font = header_font
-        for bucket in es_response['aggregations'][agg_name]['buckets']:
-            if len(bucket['key']) > column_width:
-                column_width = len(bucket['key'])
-            row += 1
-            ws.cell(row=row, column=1, value=bucket['key'])
-            ws.cell(row=row, column=2, value=bucket['doc_count'])
-        ws.column_dimensions['A'].width = column_width
+        aggs_data, column_width = data_from_aggs(es_response['aggregations'][agg_name]['buckets'])
+        for row in aggs_data:
+            ws.append(row)
+        if column_width_header > column_width:
+            ws.column_dimensions['A'].width = column_width_header
+        else:
+            ws.column_dimensions['A'].width = column_width
+
+        # add pie chart
+        if args['piechart']:
+            pie_chart = PieChart()
+            labels = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
+            chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
+            pie_chart.add_data(chart_data, titles_from_data=True)
+            pie_chart.set_categories(labels)
+            pie_chart.title = agg_name
+
+            # Cut the first slice out of the pie
+            pie_slice = DataPoint(idx=0, explosion=20)
+            pie_chart.series[0].data_points = [pie_slice]
+
+            ws.add_chart(pie_chart, "D2")
+
+        # add bar chart
+        if args['barchart']:
+            bar_chart = BarChart()
+            bar_chart.type = "col"
+            bar_chart.style = 10
+            bar_chart.title = agg_name
+            bar_chart.y_axis.title = 'count'
+
+            chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
+            cats = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
+            bar_chart.add_data(chart_data, titles_from_data=True)
+            bar_chart.set_categories(cats)
+            bar_chart.shape = 4
+            ws.add_chart(bar_chart, "D20")
 
     wb.save(args['output'])
