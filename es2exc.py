@@ -6,6 +6,27 @@ from elasticsearch import Elasticsearch
 import argparse
 from openpyxl import Workbook
 
+
+def new_key(upper, new):
+    if upper != '':
+        return upper + '.' + new
+    else:
+        return new
+
+
+def loop_on_nested_dict(the_element, upper_key=''):
+    if isinstance(the_element, dict):
+        for key, value in the_element.items():
+            for _ in loop_on_nested_dict(value, new_key(upper_key, key)):
+                yield _
+    elif isinstance(the_element, list):
+        for i in range(0, len(the_element)):
+            for _ in loop_on_nested_dict(the_element[i], '{}[{}]'.format(upper_key, i)):
+                yield _
+    else:
+        yield upper_key, the_element
+
+
 if __name__ == '__main__':
 
     argument_parser = argparse.ArgumentParser(
@@ -47,8 +68,7 @@ if __name__ == '__main__':
     row_next = 2
 
     for hit in es_response['hits']['hits']:
-        # TODO iter over nested fields
-        for k, v in hit['_source'].items():
+        for k, v in loop_on_nested_dict(hit['_source']):
             if k not in column_values:
                 column_values[k] = column_next
                 column_next += 1
