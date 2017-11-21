@@ -1,6 +1,7 @@
 import json
 import logging
 
+import sys
 from elasticsearch import Elasticsearch
 import argparse
 from openpyxl import Workbook
@@ -33,6 +34,8 @@ if __name__ == '__main__':
         args['query'] = json.loads(args['query'])
     except Exception as ex:
         e_logger.exception(ex)
+        print('1')
+        sys.exit(1)
 
     es_response = es_client.search(index=args['index'], body=args['query'])
 
@@ -54,13 +57,18 @@ if __name__ == '__main__':
         row_next += 1
 
     for agg_name in es_response['aggregations'].keys():
+        column_width = 8
         wb.create_sheet(agg_name)
         ws = wb.get_sheet_by_name(agg_name)
         row = 1
         ws.cell(row=row, column=1, value=agg_name)
+        ws.cell(row=row, column=2, value='count')
         for bucket in es_response['aggregations'][agg_name]['buckets']:
+            if len(bucket['key']) > column_width:
+                column_width = len(bucket['key'])
             row += 1
             ws.cell(row=row, column=1, value=bucket['key'])
             ws.cell(row=row, column=2, value=bucket['doc_count'])
+        ws.column_dimensions['A'].width = column_width
 
     wb.save(args['output'])
