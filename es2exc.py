@@ -6,6 +6,7 @@ from elasticsearch import Elasticsearch
 import argparse
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, colors
 
 
 def new_key(upper, new):
@@ -65,15 +66,18 @@ if __name__ == '__main__':
     ws = wb.get_active_sheet()
     ws.title = 'hits'
     column_next = 1
-    column_values = {}
+    column_values = {}  # {'column_key':(column_index, column_width)}
     row_next = 2
+
+    header_font = Font(color=colors.BLUE, bold=True)
 
     for hit in es_response['hits']['hits']:
         for k, v in loop_on_nested_dict(hit['_source']):
             if k not in column_values:
                 column_values[k] = (column_next, len(k))
                 column_next += 1
-                ws.cell(row=1, column=column_values[k][0], value=k)
+                c = ws.cell(row=1, column=column_values[k][0], value=k)
+                c.font = header_font
             ws.cell(row=row_next, column=column_values[k][0], value=v)
             if column_values[k][1] < len(v) < 60:
                 column_values[k] = column_values[k][0], len(v)
@@ -86,8 +90,10 @@ if __name__ == '__main__':
         wb.create_sheet(agg_name)
         ws = wb.get_sheet_by_name(agg_name)
         row = 1
-        ws.cell(row=row, column=1, value=agg_name)
-        ws.cell(row=row, column=2, value='count')
+        c = ws.cell(row=row, column=1, value=agg_name)
+        c.font = header_font
+        c = ws.cell(row=row, column=2, value='count')
+        c.font = header_font
         for bucket in es_response['aggregations'][agg_name]['buckets']:
             if len(bucket['key']) > column_width:
                 column_width = len(bucket['key'])
