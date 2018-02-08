@@ -18,6 +18,53 @@ e_handler.setFormatter(e_formatter)
 e_logger.addHandler(e_handler)
 
 
+def swap_columns(w, col1, col2):
+    temp = []
+
+    max_length = len(w[get_column_letter(col1)]) + 1
+    for _ in range(1, max_length):
+        col = w['{}{}'.format(get_column_letter(col1), _)]
+        temp.append(col.value)
+        col.value = ''
+
+    max_length = len(w[get_column_letter(col2)]) + 1
+    for _ in range(1, max_length):
+        w['{}{}'.format(get_column_letter(col1), _)].value = w['{}{}'.format(get_column_letter(col2), _)].value
+
+    last = 1
+    max_length = len(w[get_column_letter(col2)]) + 1
+    for _ in range(1, max_length):
+        w['{}{}'.format(get_column_letter(col2), _)].value = temp[_ - 1]
+        last = _
+    last += 1
+    if last < max_length:
+        for i in range(last, max_length):
+            w['{}{}'.format(get_column_letter(col2), i)].value = ''
+
+
+def order_columns(w_sheet, c_values):
+    """
+    Order columns in alphabetical order by the header
+    """
+    columns_current = [str(_.value) for _ in w_sheet['1']]
+    columns_ordered = sorted(c_values.keys())
+    index = 0
+    while index < len(columns_ordered):
+        if columns_current == columns_ordered:
+            break
+        header_this = columns_current[index]
+        header_ordered = columns_ordered[index]
+        if header_this != header_ordered:
+            index_ordered = columns_current.index(header_ordered)
+            swap_columns(w_sheet, index + 1, index_ordered + 1)
+            c_values[header_this] = index_ordered + 1, c_values[header_this][1]
+            c_values[header_ordered] = index + 1, c_values[header_ordered][1]
+            columns_current = [str(_.value) for _ in w_sheet['1']]
+        else:
+            index += 1
+    return w_sheet, c_values
+
+
 def new_key(upper, new):
     if upper != '':
         return upper + '.' + str(new)
@@ -113,6 +160,9 @@ if __name__ == '__main__':
                 if column_values[k][1] < len(v) < 60:
                     column_values[k] = column_values[k][0], len(v)
             row_next += 1
+
+        ws, column_values = order_columns(ws, column_values)
+
         for column_index, column_width in column_values.values():
             ws.column_dimensions[get_column_letter(column_index)].width = column_width
 
