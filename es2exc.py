@@ -48,6 +48,18 @@ def data_from_aggs(es_buckets):
     return data, width
 
 
+def get_next_sheet(wrkb, name):
+    """
+    Create a new sheet
+    If only the first sheet 'Sheet' is present, rename it
+    """
+    if u'Sheet' in wrkb.sheetnames:
+        this_sheet = wrkb.get_sheet_by_name(u'Sheet')
+        this_sheet.title = name
+    else:
+        wrkb.create_sheet(name)
+
+
 if __name__ == '__main__':
 
     argument_parser = argparse.ArgumentParser(
@@ -79,76 +91,80 @@ if __name__ == '__main__':
     e_logger.info('got {} hits from es!'.format(es_response['hits']['total']))
 
     wb = Workbook()
-    ws = wb.get_active_sheet()
-    ws.title = 'hits'
-    column_next = 1
-    column_values = {}  # {'column_key':(column_index, column_width)}
-    row_next = 2
-
     header_font = Font(color=colors.BLUE, bold=True)
 
-    # add total hits sheet
-    for hit in es_response['hits']['hits']:
-        for k, v in loop_on_nested_dict(hit['_source']):
-            if k not in column_values:
-                column_values[k] = (column_next, len(k))
-                column_next += 1
-                c = ws.cell(row=1, column=column_values[k][0], value=k)
-                c.font = header_font
-            ws.cell(row=row_next, column=column_values[k][0], value=v)
-            if column_values[k][1] < len(v) < 60:
-                column_values[k] = column_values[k][0], len(v)
-        row_next += 1
-    for column_index, column_width in column_values.values():
-        ws.column_dimensions[get_column_letter(column_index)].width = column_width
+    if es_response['hits']['hits']:
+
+        get_next_sheet(wb, 'hits')
+        ws = wb.get_sheet_by_name('hits')
+        column_next = 1
+        column_values = {}  # {'column_key':(column_index, column_width)}
+        row_next = 2
+
+        # add total hits sheet
+        for hit in es_response['hits']['hits']:
+            for k, v in loop_on_nested_dict(hit['_source']):
+                if k not in column_values:
+                    column_values[k] = (column_next, len(k))
+                    column_next += 1
+                    c = ws.cell(row=1, column=column_values[k][0], value=k)
+                    c.font = header_font
+                ws.cell(row=row_next, column=column_values[k][0], value=v)
+                if column_values[k][1] < len(v) < 60:
+                    column_values[k] = column_values[k][0], len(v)
+            row_next += 1
+        for column_index, column_width in column_values.values():
+            ws.column_dimensions[get_column_letter(column_index)].width = column_width
 
     # add a sheet for every aggregation
-    for agg_name in es_response['aggregations'].keys():
-        column_width_header = len(agg_name)
-        wb.create_sheet(agg_name)
-        ws = wb.get_sheet_by_name(agg_name)
-        row = 1
-        c = ws.cell(row=row, column=1, value=agg_name)
-        c.font = header_font
-        c = ws.cell(row=row, column=2, value='count')
-        c.font = header_font
-        aggs_data, column_width = data_from_aggs(es_response['aggregations'][agg_name]['buckets'])
-        for row in aggs_data:
-            ws.append(row)
-        if column_width_header > column_width:
-            ws.column_dimensions['A'].width = column_width_header
-        else:
-            ws.column_dimensions['A'].width = column_width
+    if 'aggregations' in es_response.keys():
+        for agg_name in es_response['aggregations'].keys():
+            column_width_header = len(agg_name)
+            get_next_sheet(wb, agg_name)
+            ws = wb.get_sheet_by_name(agg_name)
+            row = 1
+            c = ws.cell(row=row, column=1, value=agg_name)
+            c.font = header_font
+            c = ws.cell(row=row, column=2, value='count')
+            c.font = header_font
+            aggs_data, column_width = data_from_aggs(es_response['aggregations'][agg_name]['buckets'])
+            for row in aggs_data:
+                ws.append(row)
+            if column_width_header > column_width:
+                ws.column_dimensions['A'].width = column_width_header
+            else:
+                ws.column_dimensions['A'].width = column_width
 
-        # add pie chart
-        if args['piechart']:
-            pie_chart = PieChart()
-            labels = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
-            chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
-            pie_chart.add_data(chart_data, titles_from_data=True)
-            pie_chart.set_categories(labels)
-            pie_chart.title = agg_name
+            # add pie chart
+            if args['piechart']:
+                pie_chart = PieChart()
+                labels = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
+                chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
+                pie_chart.add_data(chart_data, titles_from_data=True)
+                pie_chart.set_categories(labels)
+                pie_chart.title = agg_name
 
-            # Cut the first slice out of the pie
-            pie_slice = DataPoint(idx=0, explosion=20)
-            pie_chart.series[0].data_points = [pie_slice]
+                # Cut the first slice out of the pie
+                pie_slice = DataPoint(idx=0, explosion=20)
+                pie_chart.series[0].data_points = [pie_slice]
 
-            ws.add_chart(pie_chart, "D2")
+                ws.add_chart(pie_chart, "D2")
 
-        # add bar chart
-        if args['barchart']:
-            bar_chart = BarChart()
-            bar_chart.type = "col"
-            bar_chart.style = 10
-            bar_chart.title = agg_name
-            bar_chart.y_axis.title = 'count'
+            # add bar chart
+            if args['barchart']:
+                bar_chart = BarChart()
+                bar_chart.type = "col"
+                bar_chart.style = 10
+                bar_chart.title = agg_name
+                bar_chart.y_axis.title = 'count'
 
-            chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
-            cats = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
-            bar_chart.add_data(chart_data, titles_from_data=True)
-            bar_chart.set_categories(cats)
-            bar_chart.shape = 4
-            ws.add_chart(bar_chart, "D20")
+                chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
+                cats = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
+                bar_chart.add_data(chart_data, titles_from_data=True)
+                bar_chart.set_categories(cats)
+                bar_chart.shape = 4
+                ws.add_chart(bar_chart, "D20")
 
     wb.save(args['output'])
     e_logger.info('saved file {}'.format(args['output']))
+    e_logger.info('Finish!')
