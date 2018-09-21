@@ -2,6 +2,8 @@
 
 Simple script to create an Excel report on Elasticsearch data
 
+Contribute!
+
 ## Install
 
     git clone https://github.com/MisoMadao/esxcel
@@ -27,3 +29,10 @@ Simple script to create an Excel report on Elasticsearch data
       --output OUTPUT  output file name (default: es2exc_output.xlsx)
       --piechart       add a pie chart from aggregations (default: False)
       --barchart       add a bar chart from aggregations (default: False)
+
+## Result
+
+Please take a look at the wiki!
+
+![](https://image.ibb.co/cwLWEz/001.png)
+![](https://image.ibb.co/g7vEZz/003.png)
