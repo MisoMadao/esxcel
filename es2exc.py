@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 import sys
-
+import yaml
 import os
 from elasticsearch import Elasticsearch
 from openpyxl import Workbook
@@ -10,6 +10,9 @@ from openpyxl.chart import PieChart, Reference, BarChart
 from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Font, colors
 from openpyxl.utils import get_column_letter
+
+__author__ = 'Miso Mijatovic'
+__version__ = '1.0'
 
 e_logger = logging.Logger(__name__)
 e_handler = logging.FileHandler(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'es2exc.log'))
@@ -82,7 +85,7 @@ def loop_on_nested_dict(the_element, upper_key=''):
             for _ in loop_on_nested_dict(the_element[i], '{}[{}]'.format(upper_key, i)):
                 yield _
     else:
-        yield upper_key, str(the_element)
+        yield upper_key, the_element
 
 
 def data_from_aggs(es_buckets):
@@ -107,35 +110,10 @@ def get_next_sheet(wrkb, name):
         wrkb.create_sheet(name)
 
 
-if __name__ == '__main__':
+def main():
 
-    argument_parser = argparse.ArgumentParser(
-        prog='es2exc - Elasticsearch query to Excel',
-        description='Query Elasticsearch and create an excel report with the result',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        add_help=True
-    )
-    argument_parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-    argument_parser.add_argument('--host', help='host:port to make the query', default='127.0.0.1:9200')
-    argument_parser.add_argument('--index', help='index (pattern) to make the query', required=True)
-    argument_parser.add_argument('--query', help='es query to make, every aggregation will be a table', required=True)
-    argument_parser.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
-    argument_parser.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
-    argument_parser.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
-    args = vars(argument_parser.parse_args())
-    e_logger.info(args)
-
-    try:
-        args['query'] = args['query'].replace("'", '"')
-        es_client = Elasticsearch(hosts=[args['host']])
-        args['query'] = json.loads(args['query'])
-    except Exception as ex:
-        e_logger.exception(ex)
-        print('1')
-        sys.exit(1)
-
-    es_response = es_client.search(index=args['index'], body=args['query'])
-    e_logger.info('got {} hits from es!'.format(es_response['hits']['total']))
+    es_response = es_client.search(index=args['index'], body=query)
+    e_logger.info('got {} hits from es!'.format(len(es_response['hits']['hits'])))
 
     wb = Workbook()
     header_font = Font(color=colors.BLUE, bold=True)
@@ -218,3 +196,45 @@ if __name__ == '__main__':
     wb.save(args['output'])
     e_logger.info('saved file {}'.format(args['output']))
     e_logger.info('Finish!')
+
+
+def parse_arguments():
+    argument_parser = argparse.ArgumentParser(
+        prog='es2exc - Elasticsearch query to Excel',
+        description='Query Elasticsearch and create an excel report with the result',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        add_help=True
+    )
+    argument_parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
+
+    arguments_options = argument_parser.add_subparsers()
+    cli = arguments_options.add_parser('cli', help='Command line arguments')
+    cli.add_argument('--host', help='host:port to make the query', default='127.0.0.1:9200')
+    cli.add_argument('--index', help='index (pattern) to make the query', required=True)
+    cli.add_argument('--query', help='es query to make, every aggregation will be a table', required=True)
+    cli.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
+    cli.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
+    cli.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
+
+    conf = arguments_options.add_parser('conf', help='Configuration file')
+    conf.add_argument('--conf', help='path to condfiguration file', default='myreport.yml')
+
+    return vars(argument_parser.parse_args())
+
+
+if __name__ == '__main__':
+
+    args = parse_arguments()
+    e_logger.info(args)
+
+    try:
+        if 'conf' in args:
+            args = yaml.load(open(args['conf']))
+        query = json.loads(args['query'].replace("'", '"'))
+        es_client = Elasticsearch(hosts=[args['host']])
+    except Exception as ex:
+        e_logger.exception(ex)
+        print('1')
+        sys.exit(1)
+
+    main()
