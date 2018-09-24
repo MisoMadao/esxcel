@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 import sys
-
+import yaml
 import os
 from elasticsearch import Elasticsearch
 from openpyxl import Workbook
@@ -10,6 +10,9 @@ from openpyxl.chart import PieChart, Reference, BarChart
 from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Font, colors
 from openpyxl.utils import get_column_letter
+
+__author__ = 'Miso Mijatovic'
+__version__ = '1.0'
 
 e_logger = logging.Logger(__name__)
 e_handler = logging.FileHandler(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'es2exc.log'))
@@ -82,7 +85,7 @@ def loop_on_nested_dict(the_element, upper_key=''):
             for _ in loop_on_nested_dict(the_element[i], '{}[{}]'.format(upper_key, i)):
                 yield _
     else:
-        yield upper_key, str(the_element)
+        yield upper_key, the_element
 
 
 def data_from_aggs(es_buckets):
@@ -90,7 +93,7 @@ def data_from_aggs(es_buckets):
     width = 8
     for bucket in es_buckets:
         data.append([bucket['key'], bucket['doc_count']])
-        if 60 > len(bucket['key']) > width:
+        if 60 > len(repr(bucket['key'])) > width:
             width = len(bucket['key'])
     return data, width
 
@@ -107,35 +110,10 @@ def get_next_sheet(wrkb, name):
         wrkb.create_sheet(name)
 
 
-if __name__ == '__main__':
+def main():
 
-    argument_parser = argparse.ArgumentParser(
-        prog='es2exc - Elasticsearch query to Excel',
-        description='Query Elasticsearch and create an excel report with the result',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        add_help=True
-    )
-    argument_parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-    argument_parser.add_argument('--host', help='host:port to make the query', default='127.0.0.1:9200')
-    argument_parser.add_argument('--index', help='index (pattern) to make the query', required=True)
-    argument_parser.add_argument('--query', help='es query to make, every aggregation will be a table', required=True)
-    argument_parser.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
-    argument_parser.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
-    argument_parser.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
-    args = vars(argument_parser.parse_args())
-    e_logger.info(args)
-
-    try:
-        args['query'] = args['query'].replace("'", '"')
-        es_client = Elasticsearch(hosts=[args['host']])
-        args['query'] = json.loads(args['query'])
-    except Exception as ex:
-        e_logger.exception(ex)
-        print('1')
-        sys.exit(1)
-
-    es_response = es_client.search(index=args['index'], body=args['query'])
-    e_logger.info('got {} hits from es!'.format(es_response['hits']['total']))
+    es_response = es_client.search(index=args['index'], body=query)
+    e_logger.info('got {} hits from es!'.format(len(es_response['hits']['hits'])))
 
     wb = Workbook()
     header_font = Font(color=colors.BLUE, bold=True)
@@ -185,23 +163,30 @@ if __name__ == '__main__':
             else:
                 ws.column_dimensions['A'].width = column_width
 
+            next_chart_line = 2
+            # a cell is circa 0.52 cm height
+            # chart's width and height are in cm
+
             # add pie chart
-            if args['piechart']:
+            if args['aggs'][agg_name]['piechart']:
                 pie_chart = PieChart()
                 labels = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
                 chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
                 pie_chart.add_data(chart_data, titles_from_data=True)
                 pie_chart.set_categories(labels)
                 pie_chart.title = agg_name
+                pie_chart.height = 10
+                pie_chart.width = 30
 
                 # Cut the first slice out of the pie
                 pie_slice = DataPoint(idx=0, explosion=20)
                 pie_chart.series[0].data_points = [pie_slice]
 
-                ws.add_chart(pie_chart, "D2")
+                ws.add_chart(pie_chart, 'D{}'.format(next_chart_line))
+                next_chart_line = int(next_chart_line + pie_chart.height / 0.52 + 1)
 
             # add bar chart
-            if args['barchart']:
+            if args['aggs'][agg_name]['barchart']:
                 bar_chart = BarChart()
                 bar_chart.type = "col"
                 bar_chart.style = 10
@@ -213,8 +198,64 @@ if __name__ == '__main__':
                 bar_chart.add_data(chart_data, titles_from_data=True)
                 bar_chart.set_categories(cats)
                 bar_chart.shape = 4
-                ws.add_chart(bar_chart, "D20")
+                bar_chart.height = 10
+                bar_chart.width = 30
+                ws.add_chart(bar_chart, 'D{}'.format(next_chart_line))
 
     wb.save(args['output'])
     e_logger.info('saved file {}'.format(args['output']))
     e_logger.info('Finish!')
+
+
+def parse_arguments():
+    argument_parser = argparse.ArgumentParser(
+        prog='es2exc - Elasticsearch query to Excel',
+        description='Query Elasticsearch and create an excel report with the result',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        add_help=True
+    )
+    argument_parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
+
+    arguments_options = argument_parser.add_subparsers(dest='source')
+    cli = arguments_options.add_parser('cli', help='Command line arguments')
+    cli.add_argument('--host', help='host:port to make the query', default='127.0.0.1:9200')
+    cli.add_argument('--index', help='index (pattern) to make the query', required=True)
+    cli.add_argument('--query', help='es query to make, every aggregation will be a table', required=True)
+    cli.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
+    cli.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
+    cli.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
+    cli.add_argument('--user', help='username for elasticsearch')
+    cli.add_argument('--password', help='password for elasticsearch')
+
+    conf = arguments_options.add_parser('conf', help='Configuration file')
+    conf.add_argument('--conf', help='path to condfiguration file', default='myreport.yml')
+
+    return vars(argument_parser.parse_args())
+
+
+if __name__ == '__main__':
+
+    args = parse_arguments()
+    e_logger.info(args)
+
+    try:
+        if args['source'] == 'conf':
+            args.update(yaml.load(open(args['conf'])))
+            query = json.loads(args['query'])
+        else:
+            query = json.loads(args['query'].replace("'", '"'))
+            if 'aggs' not in args:
+                args['aggs'] = {}
+            for agg_name in query['aggs']:
+                args['aggs'][agg_name] = {'barchart': args['barchart'], 'piechart': args['piechart']}
+
+        if args['user']:
+            es_client = Elasticsearch(hosts=[args['host']], http_auth=(args['user'], args['password']))
+        else:
+            es_client = Elasticsearch(hosts=[args['host']])
+
+        main()
+    except Exception as ex:
+        e_logger.exception(ex)
+        print(ex.message)
+        sys.exit(1)

@@ -1,0 +1,33 @@
+# Elasticsearch
+host: "127.0.0.1:9200"
+user: elastic
+password: changeme
+index: logstash-songlyrics
+query: '{
+  "size": 50,
+  "aggs": {
+    "Top 10 artists": {
+      "terms": {
+        "field": "artist.keyword",
+        "size": 10
+      }
+    },
+    "Top 10 genres": {
+      "terms": {
+        "field": "genre.keyword",
+        "size": 10
+      }
+    }
+  }
+}'
+
+# Report
+output: es2exc_output.xlsx
+hits: true
+aggs:
+  Top 10 artists:
+    barchart: true
+    piechart: false
+  Top 10 genres:
+    piechart: true
+    barcart: false
