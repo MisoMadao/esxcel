@@ -24,5 +24,10 @@ query: '{
 # Report
 output: es2exc_output.xlsx
 hits: true
-barchart: true
-piechart: true
+aggs:
+  Top 10 artists:
+    barchart: true
+    piechart: false
+  Top 10 genres:
+    piechart: true
+    barcart: false

@@ -163,23 +163,30 @@ def main():
             else:
                 ws.column_dimensions['A'].width = column_width
 
+            next_chart_line = 2
+            # a cell is circa 0.52 cm height
+            # chart's width and height are in cm
+
             # add pie chart
-            if args['piechart']:
+            if args['aggs'][agg_name]['piechart']:
                 pie_chart = PieChart()
                 labels = Reference(ws, min_col=1, min_row=2, max_row=len(aggs_data) + 1)
                 chart_data = Reference(ws, min_col=2, min_row=1, max_row=len(aggs_data) + 1)
                 pie_chart.add_data(chart_data, titles_from_data=True)
                 pie_chart.set_categories(labels)
                 pie_chart.title = agg_name
+                pie_chart.height = 10
+                pie_chart.width = 30
 
                 # Cut the first slice out of the pie
                 pie_slice = DataPoint(idx=0, explosion=20)
                 pie_chart.series[0].data_points = [pie_slice]
 
-                ws.add_chart(pie_chart, "D2")
+                ws.add_chart(pie_chart, 'D{}'.format(next_chart_line))
+                next_chart_line = int(next_chart_line + pie_chart.height / 0.52 + 1)
 
             # add bar chart
-            if args['barchart']:
+            if args['aggs'][agg_name]['barchart']:
                 bar_chart = BarChart()
                 bar_chart.type = "col"
                 bar_chart.style = 10
@@ -191,7 +198,9 @@ def main():
                 bar_chart.add_data(chart_data, titles_from_data=True)
                 bar_chart.set_categories(cats)
                 bar_chart.shape = 4
-                ws.add_chart(bar_chart, "D20")
+                bar_chart.height = 10
+                bar_chart.width = 30
+                ws.add_chart(bar_chart, 'D{}'.format(next_chart_line))
 
     wb.save(args['output'])
     e_logger.info('saved file {}'.format(args['output']))
@@ -207,7 +216,7 @@ def parse_arguments():
     )
     argument_parser.add_argument('--version', action='version', version='%(prog)s {}'.format(__version__))
 
-    arguments_options = argument_parser.add_subparsers()
+    arguments_options = argument_parser.add_subparsers(dest='source')
     cli = arguments_options.add_parser('cli', help='Command line arguments')
     cli.add_argument('--host', help='host:port to make the query', default='127.0.0.1:9200')
     cli.add_argument('--index', help='index (pattern) to make the query', required=True)
@@ -230,11 +239,16 @@ if __name__ == '__main__':
     e_logger.info(args)
 
     try:
-        if 'conf' in args:
-            args = yaml.load(open(args['conf']))
+        if args['source'] == 'conf':
+            args.update(yaml.load(open(args['conf'])))
+            query = json.loads(args['query'])
         else:
-            args['query'] = args['query'].replace("'", '"')
-        query = json.loads(args['query'])
+            query = json.loads(args['query'].replace("'", '"'))
+            if 'aggs' not in args:
+                args['aggs'] = {}
+            for agg_name in query['aggs']:
+                args['aggs'][agg_name] = {'barchart': args['barchart'], 'piechart': args['piechart']}
+
         if args['user']:
             es_client = Elasticsearch(hosts=[args['host']], http_auth=(args['user'], args['password']))
         else:
