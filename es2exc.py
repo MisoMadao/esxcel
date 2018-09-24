@@ -93,7 +93,7 @@ def data_from_aggs(es_buckets):
     width = 8
     for bucket in es_buckets:
         data.append([bucket['key'], bucket['doc_count']])
-        if 60 > len(bucket['key']) > width:
+        if 60 > len(repr(bucket['key'])) > width:
             width = len(bucket['key'])
     return data, width
 
@@ -215,6 +215,8 @@ def parse_arguments():
     cli.add_argument('--output', help='output file name', default='es2exc_output.xlsx')
     cli.add_argument('--piechart', help='add a pie chart from aggregations', action='store_true')
     cli.add_argument('--barchart', help='add a bar chart from aggregations', action='store_true')
+    cli.add_argument('--user', help='username for elasticsearch')
+    cli.add_argument('--password', help='password for elasticsearch')
 
     conf = arguments_options.add_parser('conf', help='Configuration file')
     conf.add_argument('--conf', help='path to condfiguration file', default='myreport.yml')
@@ -230,11 +232,16 @@ if __name__ == '__main__':
     try:
         if 'conf' in args:
             args = yaml.load(open(args['conf']))
-        query = json.loads(args['query'].replace("'", '"'))
-        es_client = Elasticsearch(hosts=[args['host']])
+        else:
+            args['query'] = args['query'].replace("'", '"')
+        query = json.loads(args['query'])
+        if args['user']:
+            es_client = Elasticsearch(hosts=[args['host']], http_auth=(args['user'], args['password']))
+        else:
+            es_client = Elasticsearch(hosts=[args['host']])
+
+        main()
     except Exception as ex:
         e_logger.exception(ex)
-        print('1')
+        print(ex.message)
         sys.exit(1)
-
-    main()

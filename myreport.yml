@@ -1,7 +1,7 @@
 # Elasticsearch
 host: "127.0.0.1:9200"
-user:
-password:
+user: elastic
+password: changeme
 index: logstash-songlyrics
 query: '{
   "size": 50,
