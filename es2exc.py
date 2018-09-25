@@ -110,9 +110,26 @@ def get_next_sheet(wrkb, name):
         wrkb.create_sheet(name)
 
 
-def main():
+def get_documents_from_elasticsearch():
+    es_response = es_client.search(index=args['index'], body=query, scroll='2m')
+    hits = es_response['hits']['hits']
+    size = len(hits)
+    sid = es_response['_scroll_id']
+    if size < es_response['hits']['total']:
+        while size:
+            new_response = es_client.scroll(scroll_id=sid, scroll='2m')
+            new_hits = new_response['hits']['hits']
+            size = len(new_hits)
+            if size:
+                hits.extend(new_hits)
+                print len(hits)
+                sid = new_response['_scroll_id']
+    es_response['hits']['hits'] = hits
+    return es_response
 
-    es_response = es_client.search(index=args['index'], body=query)
+
+def main():
+    es_response = get_documents_from_elasticsearch()
     e_logger.info('got {} hits from es!'.format(len(es_response['hits']['hits'])))
 
     wb = Workbook()
